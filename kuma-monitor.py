@@ -6,6 +6,7 @@ import sys
 import time
 import os
 import signal
+import json
 from typing import Dict, List, Tuple
 
 def load_env_file():
@@ -25,6 +26,8 @@ API_KEY = os.getenv('KUMA_API_KEY', "uk1_hnpQpSjo5Cg5m6zeWnBLAv0KgUiLGPt3wSPH9lP
 UPDATE_INTERVAL = int(os.getenv('KUMA_UPDATE_INTERVAL', '30'))
 SHOW_HEADER = os.getenv('KUMA_SHOW_HEADER', 'true').lower() == 'true'
 SHOW_COUNTDOWN = os.getenv('KUMA_SHOW_COUNTDOWN', 'true').lower() == 'true'
+SHOW_HISTORY = os.getenv('KUMA_SHOW_HISTORY', 'true').lower() == 'true'
+HISTORY_LENGTH = int(os.getenv('KUMA_HISTORY_LENGTH', '60'))
 
 class Colors:
 	RED = '\033[0;31m'
@@ -42,6 +45,67 @@ STATUS_MAP = {
 
 def clear_screen():
 	os.system('clear' if os.name == 'posix' else 'cls')
+
+def load_history():
+	history_file = '.kuma_history.json'
+	if os.path.exists(history_file):
+		try:
+			with open(history_file, 'r') as f:
+				return json.load(f)
+		except:
+			return {}
+	return {}
+
+def save_history(history):
+	history_file = '.kuma_history.json'
+	try:
+		with open(history_file, 'w') as f:
+			json.dump(history, f)
+	except:
+		pass
+
+def update_history(monitors, history):
+	for monitor_name, status, _, _, _ in monitors:
+		if monitor_name not in history:
+			history[monitor_name] = []
+
+		history[monitor_name].append(status)
+
+		if len(history[monitor_name]) > HISTORY_LENGTH:
+			history[monitor_name] = history[monitor_name][-HISTORY_LENGTH:]
+
+	return history
+
+def get_status_color(status):
+	if status == "UP":
+		return Colors.GREEN
+	elif status == "DOWN":
+		return Colors.RED
+	elif status == "PENDING":
+		return Colors.YELLOW
+	elif status == "MAINTENANCE":
+		return Colors.BLUE
+	else:
+		return Colors.NC
+
+def display_history_bar(history, monitor_name, max_name_length, max_type_length):
+	if monitor_name not in history or not history[monitor_name]:
+		return ""
+
+	max_squares = HISTORY_LENGTH
+
+	bar = ""
+	for status in history[monitor_name]:
+		color = get_status_color(status)
+		bar += f"{color}■{Colors.NC}"
+
+	if len(history[monitor_name]) > max_squares:
+		bar = ""
+		for status in history[monitor_name][-max_squares:]:
+			color = get_status_color(status)
+			bar += f"{color}■{Colors.NC}"
+
+	return bar
 
 def get_metrics_data() -> str:
 	try:
@@ -85,7 +149,7 @@ def parse_monitor_status(metrics_data: str) -> List[Tuple[str, str, str, str, st
 
 	return monitors
 
-def display_monitors(monitors: List[Tuple[str, str, str, str, str]]):
+def display_monitors(monitors: List[Tuple[str, str, str, str, str]], history: Dict = None):
 	if not monitors:
 		print("No monitors found")
 		return
@@ -111,6 +175,11 @@ def display_monitors(monitors: List[Tuple[str, str, str, str, str]]):
 
 		print(f"{color}{status_padded} {name_padded} {type_padded} {response_padded}{Colors.NC}")
 
+		if SHOW_HISTORY and history:
+			history_bar = display_history_bar(history, monitor_name, max_name_length, max_type_length)
+			if history_bar:
+				print(f"{history_bar}")
+
 def signal_handler(signum, frame):
 	print(f"\n{Colors.YELLOW}exiting...{Colors.NC}")
 	sys.exit(0)
@@ -118,6 +187,7 @@ def signal_handler(signum, frame):
 def main():
 	signal.signal(signal.SIGINT, signal_handler)
 	first_run = True
+	history = load_history()
 
 	while True:
 		if first_run:
@@ -132,8 +202,12 @@ def main():
 			continue
 
 		monitors = parse_monitor_status(metrics_data)
+
+		history = update_history(monitors, history)
+		save_history(history)
+
 		print('\033[H', end='', flush=True)
-		display_monitors(monitors)
+		display_monitors(monitors, history)
 
 		if SHOW_COUNTDOWN:
 			for i in range(UPDATE_INTERVAL, 0, -1):

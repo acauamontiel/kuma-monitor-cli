@@ -34,6 +34,8 @@ The script can be configured using environment variables:
 | `KUMA_UPDATE_INTERVAL` | `30` | Update interval in seconds |
 | `KUMA_SHOW_HEADER` | `true` | Show table header (true/false) |
 | `KUMA_SHOW_COUNTDOWN` | `true` | Show countdown timer (true/false) |
+| `KUMA_SHOW_HISTORY` | `true` | Show history bars (true/false) |
+| `KUMA_HISTORY_LENGTH` | `60` | Number of history entries to keep and display as squares |
 
 ### Setup Options
 
@@ -91,25 +93,10 @@ export KUMA_API_KEY="your-api-key"
 ./kuma-monitor.py
 ```
 
-## Output Example
-
-```
-STATUS          NAME              TYPE        RESPONSE  
-[UP]            web / frontend    http        45ms      
-[UP]            web / backend     http        67ms      
-[UP]            db / postgres     tcp         12ms      
-[UP]            db / redis        tcp         8ms       
-[UP]            cache / memcached tcp         15ms      
-[DOWN]          service / api     http        -         
-[MAINTENANCE]   service / legacy  ping        -         
-[PENDING]       service / new     dns         -         
-next update: 30s
-```
-
 ## Status Colors
 
 - 🟢 **Green**: UP
-- 🔴 **Red**: DOWN  
+- 🔴 **Red**: DOWN
 - 🟡 **Yellow**: PENDING
 - 🔵 **Blue**: MAINTENANCE
 
