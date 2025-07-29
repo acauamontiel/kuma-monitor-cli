@@ -56,13 +56,19 @@ def get_metrics_data() -> str:
 		print(f"{Colors.RED}Error connecting to endpoint: {e}{Colors.NC}")
 		return None
 
-def parse_monitor_status(metrics_data: str) -> List[Tuple[str, str, str, str]]:
+def parse_monitor_status(metrics_data: str) -> List[Tuple[str, str, str, str, str]]:
 	monitors = []
-	pattern = r'monitor_status\{monitor_name="([^"]+)",monitor_type="([^"]+)"[^}]*\} (\d+)'
-	matches = re.findall(pattern, metrics_data)
+	status_pattern = r'monitor_status\{monitor_name="([^"]+)",monitor_type="([^"]+)"[^}]*\} (\d+)'
+	response_pattern = r'monitor_response_time\{monitor_name="([^"]+)"[^}]*\} ([0-9.]+)'
 
-	for monitor_name, monitor_type, status_code in matches:
+	status_matches = re.findall(status_pattern, metrics_data)
+	response_matches = re.findall(response_pattern, metrics_data)
+
+	response_times = {name: time for name, time in response_matches}
+
+	for monitor_name, monitor_type, status_code in status_matches:
 		status = STATUS_MAP.get(status_code, "UNKNOWN")
+		response_time = response_times.get(monitor_name, "-")
 
 		if status == "UP":
 			color = Colors.GREEN
@@ -75,29 +81,35 @@ def parse_monitor_status(metrics_data: str) -> List[Tuple[str, str, str, str]]:
 		else:
 			color = Colors.NC
 
-		monitors.append((monitor_name, status, color, monitor_type))
+		monitors.append((monitor_name, status, color, monitor_type, response_time))
 
 	return monitors
 
-def display_monitors(monitors: List[Tuple[str, str, str, str]]):
+def display_monitors(monitors: List[Tuple[str, str, str, str, str]]):
 	if not monitors:
 		print("No monitors found")
 		return
 
 	monitors.sort(key=lambda x: x[0])
-	max_name_length = max(len(monitor_name) for monitor_name, _, _, _ in monitors) if monitors else 0
-	max_type_length = max(len(monitor_type) for _, _, _, monitor_type in monitors) if monitors else 0
+	max_name_length = max(len(monitor_name) for monitor_name, _, _, _, _ in monitors) if monitors else 0
+	max_type_length = max(len(monitor_type) for _, _, _, monitor_type, _ in monitors) if monitors else 0
 
 	if SHOW_HEADER:
-		header = f"{'STATUS':<15} {'NAME':<{max_name_length + 2}} {'TYPE':<{max_type_length + 2}}"
+		header = f"{'STATUS':<15} {'NAME':<{max_name_length + 2}} {'TYPE':<{max_type_length + 2}} {'RESPONSE':<10}"
 		print(f"{Colors.NC}{header}{Colors.NC}")
 
-	for monitor_name, status, color, monitor_type in monitors:
+	for monitor_name, status, color, monitor_type, response_time in monitors:
 		status_formatted = f"[{status}]"
 		status_padded = f"{status_formatted:<15}"
 		name_padded = f"{monitor_name:<{max_name_length + 2}}"
 		type_padded = f"{monitor_type:<{max_type_length + 2}}"
-		print(f"{color}{status_padded} {name_padded} {type_padded}{Colors.NC}")
+
+		if response_time == "-":
+			response_padded = f"{response_time:<10}"
+		else:
+			response_padded = f"{response_time}ms"
+
+		print(f"{color}{status_padded} {name_padded} {type_padded} {response_padded}{Colors.NC}")
 
 def signal_handler(signum, frame):
 	print(f"\n{Colors.YELLOW}exiting...{Colors.NC}")

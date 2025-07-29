@@ -1,4 +1,4 @@
-# Kuma Monitor
+# Kuma Monitor CLI
 
 A Python script to check Uptime Kuma monitor status via command line with automatic updates.
 
@@ -94,15 +94,15 @@ export KUMA_API_KEY="your-api-key"
 ## Output Example
 
 ```
-STATUS          NAME              TYPE        
-[UP]            web / frontend    http        
-[UP]            web / backend     http        
-[UP]            db / postgres     tcp         
-[UP]            db / redis        tcp         
-[UP]            cache / memcached tcp         
-[DOWN]          service / api     http        
-[MAINTENANCE]   service / legacy  ping        
-[PENDING]       service / new     dns         
+STATUS          NAME              TYPE        RESPONSE  
+[UP]            web / frontend    http        45ms      
+[UP]            web / backend     http        67ms      
+[UP]            db / postgres     tcp         12ms      
+[UP]            db / redis        tcp         8ms       
+[UP]            cache / memcached tcp         15ms      
+[DOWN]          service / api     http        -         
+[MAINTENANCE]   service / legacy  ping        -         
+[PENDING]       service / new     dns         -         
 next update: 30s
 ```
 
