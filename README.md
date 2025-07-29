@@ -2,6 +2,8 @@
 
 A Python script to check Uptime Kuma monitor status via command line with automatic updates.
 
+![Kuma Monitor Demo](demo.png)
+
 ## Features
 
 - **🔄 Auto-update** every 30 seconds (configurable)
