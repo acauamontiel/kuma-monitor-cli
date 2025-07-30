@@ -8,6 +8,8 @@ import os
 import signal
 import json
 from typing import Dict, List, Tuple
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 def load_env_file():
 	env_file = '.env'
@@ -28,6 +30,8 @@ SHOW_HEADER = os.getenv('KUMA_SHOW_HEADER', 'true').lower() == 'true'
 SHOW_COUNTDOWN = os.getenv('KUMA_SHOW_COUNTDOWN', 'true').lower() == 'true'
 SHOW_HISTORY = os.getenv('KUMA_SHOW_HISTORY', 'true').lower() == 'true'
 HISTORY_LENGTH = int(os.getenv('KUMA_HISTORY_LENGTH', '60'))
+MAX_RETRIES = int(os.getenv('KUMA_MAX_RETRIES', '3'))
+RETRY_DELAY = int(os.getenv('KUMA_RETRY_DELAY', '5'))
 
 class Colors:
 	RED = '\033[0;31m'
@@ -42,6 +46,23 @@ STATUS_MAP = {
 	"2": "PENDING",
 	"3": "MAINTENANCE"
 }
+
+def create_session_with_retry():
+	"""Create a requests session with retry strategy"""
+	session = requests.Session()
+
+	retry_strategy = Retry(
+		total=MAX_RETRIES,
+		status_forcelist=[429, 500, 502, 503, 504],
+		backoff_factor=1,
+		raise_on_status=False
+	)
+	
+	adapter = HTTPAdapter(max_retries=retry_strategy)
+	session.mount("http://", adapter)
+	session.mount("https://", adapter)
+	
+	return session
 
 def clear_screen():
 	os.system('clear' if os.name == 'posix' else 'cls')
@@ -108,17 +129,34 @@ def display_history_bar(history, monitor_name, max_name_length, max_type_length)
 	return bar
 
 def get_metrics_data() -> str:
-	try:
-		response = requests.get(
-			ENDPOINT_URL,
-			auth=("", API_KEY),
-			timeout=10
-		)
-		response.raise_for_status()
-		return response.text
-	except requests.exceptions.RequestException as e:
-		print(f"{Colors.RED}Error connecting to endpoint: {e}{Colors.NC}")
-		return None
+	session = create_session_with_retry()
+	
+	for attempt in range(MAX_RETRIES + 1):
+		try:
+			response = session.get(
+				ENDPOINT_URL,
+				auth=("", API_KEY),
+				timeout=10
+			)
+			response.raise_for_status()
+			return response.text
+		except requests.exceptions.ConnectionError as e:
+			if "NameResolutionError" in str(e) or "Failed to resolve" in str(e):
+				print(f"{Colors.YELLOW}DNS resolution failed (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e}{Colors.NC}")
+			else:
+				print(f"{Colors.YELLOW}Connection error (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e}{Colors.NC}")
+		except requests.exceptions.Timeout as e:
+			print(f"{Colors.YELLOW}Request timeout (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e}{Colors.NC}")
+		except requests.exceptions.RequestException as e:
+			print(f"{Colors.RED}Request error (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e}{Colors.NC}")
+		
+		if attempt < MAX_RETRIES:
+			delay = RETRY_DELAY * (2 ** attempt)
+			print(f"{Colors.YELLOW}Retrying in {delay} seconds...{Colors.NC}")
+			time.sleep(delay)
+	
+	print(f"{Colors.RED}All retry attempts failed. Will retry on next update cycle.{Colors.NC}")
+	return None
 
 def parse_monitor_status(metrics_data: str) -> List[Tuple[str, str, str, str, str]]:
 	monitors = []
@@ -188,6 +226,7 @@ def main():
 	signal.signal(signal.SIGINT, signal_handler)
 	first_run = True
 	history = load_history()
+	last_successful_update = None
 
 	while True:
 		if first_run:
@@ -201,6 +240,7 @@ def main():
 			time.sleep(UPDATE_INTERVAL)
 			continue
 
+		last_successful_update = time.time()
 		monitors = parse_monitor_status(metrics_data)
 
 		history = update_history(monitors, history)
